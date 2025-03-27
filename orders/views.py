@@ -65,7 +65,7 @@ def order_detail(request, order_id):
 @swagger_auto_schema(
     method='POST',
     operation_summary='Create new order',
-    operation_description='Creates a new order from the current cart and clears the cart. Total amount is calculated automatically.',
+    operation_description='Creates a new order from the current cart and clears the cart. Total amount is taken from the cart.',
     request_body=OrderCreateSerializer,
     responses={
         201: OrderSerializer,
@@ -78,7 +78,7 @@ def order_detail(request, order_id):
 def create_order(request):
     """
     Create a new order from the current cart.
-    Total amount is calculated automatically from cart items.
+    Total amount is taken directly from the cart.
     """
     user = request.user
 
@@ -102,12 +102,10 @@ def create_order(request):
     serializer = OrderCreateSerializer(data=request.data, context={'request': request})
     if serializer.is_valid():
         with transaction.atomic():
-            # Create the order with zero total initially
-            order = serializer.save()
+            # Create the order using the cart's total amount
+            order = serializer.save(total_amount=cart.total_amount)
             
-            # Create order items from cart items and calculate total
-            total_amount = 0
-            
+            # Create order items from cart items
             for cart_item in cart_items:
                 # Check if there's enough stock
                 if cart_item.quantity > cart_item.product.stock:
@@ -115,31 +113,23 @@ def create_order(request):
                         "detail": f"Not enough stock for '{cart_item.product.name}'. Available: {cart_item.product.stock}"
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
-                # Calculate item price
-                item_price = cart_item.product.price
-                item_total = item_price * cart_item.quantity
-                
                 # Create order item
                 OrderItem.objects.create(
                     order=order,
                     product=cart_item.product,
                     quantity=cart_item.quantity,
-                    price=item_price
+                    price=cart_item.product.price
                 )
                 
                 # Update product stock
                 cart_item.product.stock -= cart_item.quantity
                 cart_item.product.save()
-                
-                # Add to total
-                total_amount += item_total
-            
-            # Update order total
-            order.total_amount = total_amount
-            order.save()
             
             # Clear the cart
             cart_items.delete()
+            # Reset cart total to zero after emptying
+            cart.total_amount = 0
+            cart.save()
             
             return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
     
