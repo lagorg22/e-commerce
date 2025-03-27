@@ -8,8 +8,15 @@ from drf_yasg import openapi
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.pagination import PageNumberPagination
 
+# Custom pagination class for product listing
+# Allows clients to specify page size (default: 10, max: 100)
+class ProductPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
-
+# API endpoint to retrieve all categories
+# Returns a list of all available product categories
 @swagger_auto_schema(
     method='GET',
     operation_summary='Get Category Details',
@@ -27,14 +34,12 @@ def category_list(request):
     serializer = CategorySerializer(categories, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
-
-class ProductPagination(PageNumberPagination):
-    page_size = 10
-    page_size_query_param = 'page_size'
-    max_page_size = 100
-
-
-
+# API endpoint to retrieve a paginated list of products with filtering and sorting capabilities
+# Supports:
+# - Search by name/description
+# - Filter by category and price
+# - Sort by price or creation date
+# - Pagination with customizable page size
 @swagger_auto_schema(
     method='GET',
     operation_summary='Get Product list with Pagination & Filters',
@@ -51,30 +56,38 @@ class ProductPagination(PageNumberPagination):
 )
 @api_view(['GET'])
 def product_list(request):
+    # Start with all products
     products = Product.objects.all()
 
+    # Apply category filter if specified
     category = request.GET.get('category')
-    price = request.GET.get('price')
-
     if category:
         products = products.filter(category__id=category)
+    
+    # Apply price filter if specified
+    price = request.GET.get('price')
     if price:
         products = products.filter(price=price)
 
+    # Apply search filter if specified (searches in both name and description)
     search_query = request.GET.get('search')
     if search_query:
         products = products.filter(name__icontains=search_query) | products.filter(description__icontains=search_query)
 
-    ordering = request.GET.get('ordering', '-created_at') # Default ordering by date
+    # Apply sorting (default: newest first)
+    ordering = request.GET.get('ordering', '-created_at')
     products = products.order_by(ordering)
 
+    # Apply pagination
     paginator = ProductPagination()
     paginated_products = paginator.paginate_queryset(products, request)
 
     serializer = ProductSerializer(paginated_products, many=True)
     return paginator.get_paginated_response(serializer.data)
 
-
+# API endpoint to create a new product
+# Supports multipart form data for image upload
+# Requires category selection from existing categories
 @swagger_auto_schema(
     method='POST',
     operation_summary='POST product Details',
@@ -112,8 +125,10 @@ def product_list(request):
 @api_view(['POST'])
 @parser_classes([MultiPartParser, FormParser])
 def add_product(request):
+    # Validate and save the product data
     serializer = ProductSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
