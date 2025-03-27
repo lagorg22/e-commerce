@@ -42,7 +42,7 @@ urlpatterns = [
     path('docs/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger'),
     path('users/', include('users.urls')),
     path('cart/', include('cart.urls')),
-
+    path('orders/', include('orders.urls')),
 ]
 
 if settings.DEBUG:
