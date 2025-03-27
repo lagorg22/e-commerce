@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import UserRegisterSerializer, UserLoginSerializer, UserSerializer, LogoutSerializer, AdminRegisterSerializer
+from .serializers import UserRegisterSerializer, UserLoginSerializer, UserSerializer, LogoutSerializer, AdminRegisterSerializer, ChangePasswordSerializer
 
 # User Registration Endpoint
 @swagger_auto_schema(
@@ -177,3 +177,122 @@ def register_admin(request):
         serializer.save()
         return Response({"message": "Admin user registered successfully"}, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# Change Password Endpoint
+@swagger_auto_schema(
+    method='PUT',
+    operation_summary='Change User Password',
+    operation_description='This endpoint allows a user to change their password after verifying their old password.',
+    request_body=ChangePasswordSerializer,
+    responses={
+        status.HTTP_200_OK: openapi.Response(
+            description='Password changed successfully',
+            examples={'application/json': {'message': 'Password changed successfully'}}
+        ),
+        status.HTTP_400_BAD_REQUEST: openapi.Response(
+            description='Invalid data provided',
+            examples={'application/json': {'old_password': ['Wrong password.']}}
+        ),
+        status.HTTP_401_UNAUTHORIZED: openapi.Response(
+            description='Authentication required',
+            examples={'application/json': {'detail': 'Authentication credentials were not provided.'}}
+        )
+    }
+)
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    """
+    Change user password
+    
+    Requires old password for verification and new password with confirmation.
+    Example request body:
+    {
+        "old_password": "current_password",
+        "new_password": "new_secure_password",
+        "confirm_password": "new_secure_password"
+    }
+    """
+    user = request.user
+    serializer = ChangePasswordSerializer(data=request.data)
+    
+    if serializer.is_valid():
+        # Check if old password is correct
+        if not user.check_password(serializer.validated_data['old_password']):
+            return Response(
+                {"old_password": ["Wrong password."]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Set new password
+        user.set_password(serializer.validated_data['new_password'])
+        user.save()
+        
+        return Response(
+            {"message": "Password changed successfully"},
+            status=status.HTTP_200_OK
+        )
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# Delete User Account Endpoint
+@swagger_auto_schema(
+    method='DELETE',
+    operation_summary='Delete User Account',
+    operation_description='This endpoint allows a user to delete their own account.',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['password'],
+        properties={
+            'password': openapi.Schema(
+                type=openapi.TYPE_STRING, 
+                description='Current password to confirm account deletion'
+            )
+        }
+    ),
+    responses={
+        status.HTTP_204_NO_CONTENT: openapi.Response(
+            description='Account deleted successfully'
+        ),
+        status.HTTP_400_BAD_REQUEST: openapi.Response(
+            description='Invalid password',
+            examples={'application/json': {'password': ['Wrong password.']}}
+        ),
+        status.HTTP_401_UNAUTHORIZED: openapi.Response(
+            description='Authentication required',
+            examples={'application/json': {'detail': 'Authentication credentials were not provided.'}}
+        )
+    }
+)
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_account(request):
+    """
+    Delete user account
+    
+    Requires password confirmation for security.
+    Example request body:
+    {
+        "password": "your_current_password"
+    }
+    """
+    user = request.user
+    password = request.data.get('password')
+    
+    if not password:
+        return Response(
+            {"password": ["This field is required."]},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Verify password
+    if not user.check_password(password):
+        return Response(
+            {"password": ["Wrong password."]},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Delete user account
+    user.delete()
+    
+    return Response(status=status.HTTP_204_NO_CONTENT)
