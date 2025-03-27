@@ -96,24 +96,59 @@ def user_profile(request):
 @swagger_auto_schema(
     method='POST',
     operation_summary='User Logout',
-    operation_description='This endpoint blacklists the refresh token to log out the user.',
-    request_body=LogoutSerializer,
+    operation_description='''
+    This endpoint blacklists the refresh token to log out the user.
+    You must provide the refresh token that was issued when you logged in.
+    After logging out, the token cannot be used to obtain new access tokens.
+    ''',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['refresh'],
+        properties={
+            'refresh': openapi.Schema(
+                type=openapi.TYPE_STRING, 
+                description='The refresh token issued during login'
+            )
+        }
+    ),
     responses={
-        status.HTTP_204_NO_CONTENT: openapi.Response(
+        status.HTTP_205_RESET_CONTENT: openapi.Response(
             description='Logged out successfully',
             examples={'application/json': {'message': 'Logged out successfully'}}
         ),
         status.HTTP_400_BAD_REQUEST: openapi.Response(
             description='Invalid refresh token',
             examples={'application/json': {'refresh': ['Invalid token']}}
+        ),
+        status.HTTP_401_UNAUTHORIZED: openapi.Response(
+            description='Authentication required',
+            examples={'application/json': {'detail': 'Authentication credentials were not provided.'}}
         )
     }
 )
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_user(request):
+    """
+    Logout a user by blacklisting their refresh token
+    
+    To logout, you must provide the refresh token that was issued when you logged in.
+    Example request body:
+    {
+        "refresh": "your_refresh_token_here"
+    }
+    """
     serializer = LogoutSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save()
-        return Response({"message": "Logged out successfully"}, status=status.HTTP_204_NO_CONTENT)
+        try:
+            serializer.save()
+            return Response(
+                {"message": "Logged out successfully"}, 
+                status=status.HTTP_205_RESET_CONTENT
+            )
+        except Exception as e:
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
