@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'users',
     'rest_framework_simplejwt.token_blacklist',  # <-- Added for JWT token blacklisting
     'cart',
+    'orders',
 ]
 
 MIDDLEWARE = [
