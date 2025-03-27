@@ -23,11 +23,11 @@ from drf_yasg import openapi
 
 schema_view = get_schema_view(
     openapi.Info(
-        title='Event Manager API',
+        title='E-COMMERCE STORE API',
         default_version='v1',
-        description='This is the API for event manager application',
+        description='This is the API for E-COMMERCE application',
         terms_of_service='https://www.google.com/policies/terms/',
-        contact=openapi.Contact(email='irakli.tabatadze.80@gmail.com')
+        contact=openapi.Contact(email='gorgolasha@gmail.com')
     ),
     public=True,
 )
