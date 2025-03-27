@@ -2,3 +2,4 @@ django
 djangorestframework
 drf-yasg
 django-filter
+pillow
