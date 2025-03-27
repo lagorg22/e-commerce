@@ -21,6 +21,7 @@ from django.urls import path, include
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework.permissions import AllowAny
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -31,7 +32,8 @@ schema_view = get_schema_view(
         contact=openapi.Contact(email='gorgolasha@gmail.com')
     ),
     public=True,
-    permission_classes=(AllowAny,)
+    permission_classes=(AllowAny,),
+    authentication_classes=(SessionAuthentication, TokenAuthentication),
 )
 
 urlpatterns = [
@@ -39,6 +41,7 @@ urlpatterns = [
     path('products/', include('products.urls')),
     path('docs/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger'),
     path('users/', include('users.urls')),
+    path('cart/', include('cart.urls')),
 
 ]
 
