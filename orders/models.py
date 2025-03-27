@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from products.models import Product
+from decimal import Decimal
 
 class Order(models.Model):
     """
@@ -26,6 +27,20 @@ class Order(models.Model):
     
     def __str__(self):
         return f"Order #{self.id} by {self.user.username}"
+    
+    def recalculate_total(self):
+        """
+        Recalculate total amount based on order items
+        """
+        total = Decimal('0.00')
+        items = self.items.all()
+        for item in items:
+            item_total = item.price * item.quantity
+            total += item_total
+        
+        self.total_amount = total
+        self.save()
+        return total
     
     class Meta:
         ordering = ['-created_at']

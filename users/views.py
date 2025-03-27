@@ -7,7 +7,13 @@ from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import UserRegisterSerializer, UserLoginSerializer, UserSerializer, LogoutSerializer, AdminRegisterSerializer, ChangePasswordSerializer
+from .serializers import (
+    UserRegisterSerializer, UserLoginSerializer, UserSerializer, 
+    LogoutSerializer, AdminRegisterSerializer, ChangePasswordSerializer,
+    DepositSerializer, TransactionSerializer
+)
+from .models import Transaction
+from django.db import transaction
 
 # User Registration Endpoint
 @swagger_auto_schema(
@@ -69,15 +75,15 @@ def login_user(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# User Profile Endpoint (Protected)
+# User Profile Endpoint (Updated to include balance)
 @swagger_auto_schema(
     method='GET',
     operation_summary='Get User Profile',
-    operation_description='This endpoint returns the profile of the authenticated user.',
+    operation_description='This endpoint returns the profile of the authenticated user, including balance for regular users.',
     responses={
         status.HTTP_200_OK: openapi.Response(
             description='User profile retrieved successfully',
-            examples={'application/json': {'id': 1, 'username': 'testuser', 'email': 'test@example.com'}}
+            examples={'application/json': {'id': 1, 'username': 'testuser', 'email': 'test@example.com', 'is_admin': False, 'balance': '100.00'}}
         ),
         status.HTTP_401_UNAUTHORIZED: openapi.Response(
             description='Authentication credentials were not provided or are invalid.',
@@ -296,3 +302,88 @@ def delete_account(request):
     user.delete()
     
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+# Deposit Funds Endpoint
+@swagger_auto_schema(
+    method='POST',
+    operation_summary='Deposit Funds',
+    operation_description='This endpoint allows a user to deposit funds to their balance. Admin users cannot deposit funds.',
+    request_body=DepositSerializer,
+    responses={
+        status.HTTP_200_OK: openapi.Response(
+            description='Funds deposited successfully',
+            examples={'application/json': {'message': 'Deposit successful', 'new_balance': '150.00'}}
+        ),
+        status.HTTP_400_BAD_REQUEST: openapi.Response(
+            description='Invalid amount or admin user',
+            examples={'application/json': {'error': 'Amount must be positive'}}
+        ),
+        status.HTTP_401_UNAUTHORIZED: openapi.Response(
+            description='Authentication required',
+            examples={'application/json': {'detail': 'Authentication credentials were not provided.'}}
+        )
+    }
+)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def deposit_funds(request):
+    """
+    Deposit funds to user balance
+    
+    Admin users cannot deposit funds.
+    Example request body:
+    {
+        "amount": 50.00
+    }
+    """
+    # Admin users cannot deposit
+    if request.user.is_staff:
+        return Response(
+            {"error": "Admin users cannot have a balance"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    serializer = DepositSerializer(data=request.data)
+    if serializer.is_valid():
+        amount = serializer.validated_data['amount']
+        
+        # Use transaction to ensure atomicity
+        with transaction.atomic():
+            deposit_successful = request.user.profile.deposit(amount)
+            
+            if deposit_successful:
+                return Response({
+                    "message": "Deposit successful",
+                    "new_balance": request.user.profile.balance
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    "error": "Deposit failed"
+                }, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# Transaction History Endpoint
+@swagger_auto_schema(
+    method='GET',
+    operation_summary='Get Transaction History',
+    operation_description='This endpoint returns the transaction history of the authenticated user.',
+    responses={
+        status.HTTP_200_OK: TransactionSerializer(many=True),
+        status.HTTP_401_UNAUTHORIZED: openapi.Response(
+            description='Authentication required',
+            examples={'application/json': {'detail': 'Authentication credentials were not provided.'}}
+        )
+    }
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def transaction_history(request):
+    """
+    Get user transaction history
+    
+    Returns a list of all user transactions (deposits, withdrawals, refunds)
+    """
+    transactions = Transaction.objects.filter(user=request.user)
+    serializer = TransactionSerializer(transactions, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)

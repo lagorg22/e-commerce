@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from django.contrib.auth.password_validation import validate_password
+from .models import UserProfile, Transaction
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
@@ -36,12 +37,44 @@ class UserLoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
 
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['balance']
+
+
 class UserSerializer(serializers.ModelSerializer):
     is_admin = serializers.BooleanField(source='is_staff', read_only=True)
+    balance = serializers.DecimalField(
+        source='profile.balance', 
+        max_digits=10, 
+        decimal_places=2, 
+        read_only=True,
+        default=0.00,
+        allow_null=True
+    )
     
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'is_admin']
+        fields = ['id', 'username', 'email', 'is_admin', 'balance']
+
+
+class TransactionSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = Transaction
+        fields = ['id', 'username', 'amount', 'transaction_type', 'description', 'timestamp']
+        read_only_fields = ['id', 'username', 'transaction_type', 'timestamp']
+
+
+class DepositSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Amount must be positive")
+        return value
 
 
 class ChangePasswordSerializer(serializers.Serializer):

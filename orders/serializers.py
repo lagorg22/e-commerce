@@ -35,7 +35,5 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = self.context['request'].user
         validated_data['user'] = user
-        # Set initial total_amount to 0, will be updated later
-        validated_data['total_amount'] = 0
         order = Order.objects.create(**validated_data)
         return order 

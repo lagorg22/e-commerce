@@ -29,6 +29,12 @@ def order_list(request):
     """
     # Only show non-cancelled orders
     orders = Order.objects.filter(user=request.user).exclude(status='CANCELLED')
+    
+    # Ensure all orders have correct total_amount (only if needed in case of legacy data)
+    for order in orders:
+        if order.total_amount == 0:
+            order.recalculate_total()
+    
     serializer = OrderSerializer(orders, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -56,6 +62,11 @@ def order_detail(request, order_id):
         # Check if order has been cancelled
         if order.status == 'CANCELLED':
             return Response({"detail": "This order has been cancelled."}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Ensure the order has correct total_amount (only if needed in case of legacy data)
+        if order.total_amount == 0:
+            order.recalculate_total()
+            
     except Order.DoesNotExist:
         return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
     
@@ -65,11 +76,11 @@ def order_detail(request, order_id):
 @swagger_auto_schema(
     method='POST',
     operation_summary='Create new order',
-    operation_description='Creates a new order from the current cart and clears the cart. Total amount is taken from the cart.',
+    operation_description='Creates a new order from the current cart and clears the cart. Total amount is taken from the cart and deducted from user balance.',
     request_body=OrderCreateSerializer,
     responses={
         201: OrderSerializer,
-        400: "Bad Request - Invalid data or empty cart",
+        400: "Bad Request - Invalid data, empty cart, or insufficient balance",
         401: "Unauthorized - Authentication required"
     }
 )
@@ -78,9 +89,16 @@ def order_detail(request, order_id):
 def create_order(request):
     """
     Create a new order from the current cart.
-    Total amount is taken directly from the cart.
+    Total amount is taken from the cart and deducted from user's balance.
     """
     user = request.user
+
+    # Admin users cannot place orders
+    if user.is_staff:
+        return Response(
+            {"detail": "Admin users cannot place orders."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     # Check if cart exists and has items
     try:
@@ -95,6 +113,13 @@ def create_order(request):
     except Cart.DoesNotExist:
         return Response(
             {"detail": "Your cart is empty. Please add items to your cart before placing an order."}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check if user has sufficient balance
+    if not hasattr(user, 'profile') or user.profile.balance is None or user.profile.balance < cart.total_amount:
+        return Response(
+            {"detail": f"Insufficient balance. Your balance: {user.profile.balance if hasattr(user, 'profile') and user.profile.balance is not None else '0.00'}, Order total: {cart.total_amount}"},
             status=status.HTTP_400_BAD_REQUEST
         )
     
@@ -125,11 +150,21 @@ def create_order(request):
                 cart_item.product.stock -= cart_item.quantity
                 cart_item.product.save()
             
+            # Ensure the total_amount is correct based on the actual items
+            order.recalculate_total()
+            
+            # Deduct the total from user's balance
+            if not user.profile.withdraw(order.total_amount):
+                raise Exception("Failed to withdraw funds from user balance")
+            
             # Clear the cart
             cart_items.delete()
             # Reset cart total to zero after emptying
             cart.total_amount = 0
             cart.save()
+            
+            # Fetch the order with updated total_amount
+            order.refresh_from_db()
             
             return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
     
@@ -138,12 +173,15 @@ def create_order(request):
 @swagger_auto_schema(
     method='DELETE',
     operation_summary='Cancel order',
-    operation_description='Cancels an order if it has not been shipped yet.',
+    operation_description='Cancels an order if it has not been shipped yet and refunds the amount to user balance.',
     manual_parameters=[
         openapi.Parameter('order_id', openapi.IN_PATH, description="ID of the order", type=openapi.TYPE_INTEGER)
     ],
     responses={
-        200: "Order cancelled successfully",
+        200: openapi.Response(
+            description="Order cancelled successfully",
+            examples={'application/json': {'detail': 'Order cancelled successfully. Amount refunded: 50.00'}}
+        ),
         400: "Bad Request - Order cannot be cancelled",
         404: "Not Found - Order not found",
         401: "Unauthorized - Authentication required"
@@ -154,9 +192,17 @@ def create_order(request):
 def cancel_order(request, order_id):
     """
     Cancel an order if it hasn't been shipped yet
+    Returns items to inventory and refunds amount to user balance
     """
+    user = request.user
+    
+    # Admin users cannot cancel orders (they shouldn't have orders)
+    if user.is_staff:
+        return Response({"detail": "Admin users do not have orders to cancel."}, 
+                      status=status.HTTP_400_BAD_REQUEST)
+    
     try:
-        order = Order.objects.get(id=order_id, user=request.user)
+        order = Order.objects.get(id=order_id, user=user)
     except Order.DoesNotExist:
         return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
     
@@ -177,8 +223,26 @@ def cancel_order(request, order_id):
             item.product.stock += item.quantity
             item.product.save()
         
+        # Ensure the total_amount is correct before refunding
+        if order.total_amount == 0:
+            order.recalculate_total()
+        
+        # Refund to user's balance
+        refund_amount = order.total_amount
+        refund_description = f"Refund for cancelled order #{order.id}"
+        
+        # Refund the amount to user's balance
+        if not user.profile.refund(refund_amount, refund_description):
+            return Response(
+                {"detail": "Failed to process refund."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         # Update order status
         order.status = 'CANCELLED'
         order.save()
     
-    return Response({"detail": "Order cancelled successfully."}, status=status.HTTP_200_OK)
+    return Response(
+        {"detail": f"Order cancelled successfully. Amount refunded: {refund_amount}"},
+        status=status.HTTP_200_OK
+    )
