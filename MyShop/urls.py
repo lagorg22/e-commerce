@@ -18,10 +18,25 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title='Event Manager API',
+        default_version='v1',
+        description='This is the API for event manager application',
+        terms_of_service='https://www.google.com/policies/terms/',
+        contact=openapi.Contact(email='irakli.tabatadze.80@gmail.com')
+    ),
+    public=True,
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('products/', include('products.urls')),
+    path('docs/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger'),
+
 ]
 
 if settings.DEBUG:
