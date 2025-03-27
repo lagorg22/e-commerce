@@ -1,5 +1,8 @@
 django
 djangorestframework
+djangorestframework-simplejwt
 drf-yasg
-django-filter
+python-dotenv
 pillow
+django-cors-headers 
+django-filter  
