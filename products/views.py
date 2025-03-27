@@ -7,6 +7,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.pagination import PageNumberPagination
+from django.shortcuts import get_object_or_404
 
 # Custom pagination class for product listing
 # Allows clients to specify page size (default: 10, max: 100)
@@ -131,4 +132,84 @@ def add_product(request):
         serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# API endpoint to update an existing product
+# Supports partial updates and image upload
+@swagger_auto_schema(
+    method='PUT',
+    operation_summary='Update Product Details',
+    operation_description='This endpoint will update an existing product. All fields are optional.',
+    manual_parameters=[
+        openapi.Parameter(
+            'image',
+            openapi.IN_FORM,
+            type=openapi.TYPE_ARRAY,
+            items=openapi.Items(type=openapi.TYPE_FILE),
+            required=False
+        ),
+        openapi.Parameter(
+            'category',
+            openapi.IN_FORM,
+            description=(
+                "Select a category by its ID. Available categories:\n"
+                + "\n".join([f"- {c.id}: {c.name}" for c in Category.objects.all()])
+            ),
+            type=openapi.TYPE_INTEGER,
+            enum=[c.id for c in Category.objects.all()],
+            required=False
+        )
+    ],
+    request_body=ProductSerializer,
+    responses={
+        status.HTTP_200_OK: openapi.Response(
+            description='Product Updated',
+            examples={'application/json': {'message': 'Product updated successfully'}}
+        ),
+        status.HTTP_404_NOT_FOUND: openapi.Response(
+            description='Product Not Found',
+            examples={'application/json': {'message': 'Product not found'}}
+        ),
+        status.HTTP_400_BAD_REQUEST: openapi.Response(
+            description='Invalid Request',
+            examples={'application/json': {"title": ["Invalid data provided."]}}
+        )
+    }
+)
+@api_view(['PUT'])
+@parser_classes([MultiPartParser, FormParser])
+def update_product(request, product_id):
+    # Get the product or return 404 if not found
+    product = get_object_or_404(Product, id=product_id)
+    
+    # Update the product data
+    serializer = ProductSerializer(product, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# API endpoint to delete a product
+@swagger_auto_schema(
+    method='DELETE',
+    operation_summary='Delete Product',
+    operation_description='This endpoint will delete an existing product.',
+    responses={
+        status.HTTP_204_NO_CONTENT: openapi.Response(
+            description='Product Deleted',
+            examples={'application/json': {'message': 'Product deleted successfully'}}
+        ),
+        status.HTTP_404_NOT_FOUND: openapi.Response(
+            description='Product Not Found',
+            examples={'application/json': {'message': 'Product not found'}}
+        )
+    }
+)
+@api_view(['DELETE'])
+def delete_product(request, product_id):
+    # Get the product or return 404 if not found
+    product = get_object_or_404(Product, id=product_id)
+    
+    # Delete the product
+    product.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
