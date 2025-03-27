@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import UserRegisterSerializer, UserLoginSerializer, UserSerializer, LogoutSerializer
+from .serializers import UserRegisterSerializer, UserLoginSerializer, UserSerializer, LogoutSerializer, AdminRegisterSerializer
 
 # User Registration Endpoint
 @swagger_auto_schema(
@@ -151,4 +151,29 @@ def logout_user(request):
                 {"detail": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# Admin Registration Endpoint
+@swagger_auto_schema(
+    method='POST',
+    operation_summary='Register an Admin User',
+    operation_description='This endpoint allows registering an admin user with special privileges. In a production environment, this would be secured.',
+    request_body=AdminRegisterSerializer,
+    responses={
+        status.HTTP_201_CREATED: openapi.Response(
+            description='Admin user registered successfully',
+            examples={'application/json': {'message': 'Admin user registered successfully'}}
+        ),
+        status.HTTP_400_BAD_REQUEST: openapi.Response(
+            description='Invalid data provided',
+            examples={'application/json': {'username': ['This field is required.']}}
+        )
+    }
+)
+@api_view(['POST'])
+def register_admin(request):
+    serializer = AdminRegisterSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response({"message": "Admin user registered successfully"}, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

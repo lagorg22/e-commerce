@@ -1,5 +1,5 @@
 from rest_framework.response import Response
-from rest_framework.decorators import api_view, parser_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes
 from .models import Category, Product 
 from .serializers import CategorySerializer, ProductSerializer
 from rest_framework import status
@@ -8,6 +8,15 @@ from drf_yasg import openapi
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
+from rest_framework.permissions import IsAuthenticated
+
+# Custom permission class for admin-only operations
+class IsAdminUser:
+    def __call__(self, request):
+        # Check if user is authenticated and is staff
+        if not request.user.is_authenticated:
+            return False
+        return request.user.is_staff
 
 # Custom pagination class for product listing
 # Allows clients to specify page size (default: 10, max: 100)
@@ -89,10 +98,11 @@ def product_list(request):
 # API endpoint to create a new product
 # Supports multipart form data for image upload
 # Requires category selection from existing categories
+# Only accessible to admin users
 @swagger_auto_schema(
     method='POST',
-    operation_summary='POST product Details',
-    operation_description='This endpoint will create a product',
+    operation_summary='Create a New Product (Admin Only)',
+    operation_description='This endpoint allows admins to create a new product. Regular users do not have access.',
     manual_parameters=[
         openapi.Parameter(
             'image',
@@ -117,7 +127,11 @@ def product_list(request):
             description='Product Created',
             examples={'application/json': {'message': 'Product created successfully'}}
         ),
-        status.HTTP_422_UNPROCESSABLE_ENTITY: openapi.Response(
+        status.HTTP_403_FORBIDDEN: openapi.Response(
+            description='Not Authorized',
+            examples={'application/json': {'detail': 'You do not have permission to perform this action.'}}
+        ),
+        status.HTTP_400_BAD_REQUEST: openapi.Response(
             description='Invalid Request',
             examples={'application/json': {"title": ["This field is required."]}}
         )
@@ -125,7 +139,15 @@ def product_list(request):
 )
 @api_view(['POST'])
 @parser_classes([MultiPartParser, FormParser])
+@permission_classes([IsAuthenticated])
 def add_product(request):
+    # Check if user is admin
+    if not request.user.is_staff:
+        return Response(
+            {"detail": "You do not have permission to perform this action."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
     # Validate and save the product data
     serializer = ProductSerializer(data=request.data)
     if serializer.is_valid():
@@ -135,10 +157,11 @@ def add_product(request):
 
 # API endpoint to update an existing product
 # Supports partial updates and image upload
+# Only accessible to admin users
 @swagger_auto_schema(
     method='PUT',
-    operation_summary='Update Product Details',
-    operation_description='This endpoint will update an existing product. All fields are optional.',
+    operation_summary='Update Product Details (Admin Only)',
+    operation_description='This endpoint allows admins to update an existing product. Regular users do not have access.',
     manual_parameters=[
         openapi.Parameter(
             'image',
@@ -165,9 +188,13 @@ def add_product(request):
             description='Product Updated',
             examples={'application/json': {'message': 'Product updated successfully'}}
         ),
+        status.HTTP_403_FORBIDDEN: openapi.Response(
+            description='Not Authorized',
+            examples={'application/json': {'detail': 'You do not have permission to perform this action.'}}
+        ),
         status.HTTP_404_NOT_FOUND: openapi.Response(
             description='Product Not Found',
-            examples={'application/json': {'message': 'Product not found'}}
+            examples={'application/json': {'detail': 'Product not found.'}}
         ),
         status.HTTP_400_BAD_REQUEST: openapi.Response(
             description='Invalid Request',
@@ -177,7 +204,15 @@ def add_product(request):
 )
 @api_view(['PUT'])
 @parser_classes([MultiPartParser, FormParser])
+@permission_classes([IsAuthenticated])
 def update_product(request, product_id):
+    # Check if user is admin
+    if not request.user.is_staff:
+        return Response(
+            {"detail": "You do not have permission to perform this action."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
     # Get the product or return 404 if not found
     product = get_object_or_404(Product, id=product_id)
     
@@ -189,23 +224,36 @@ def update_product(request, product_id):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 # API endpoint to delete a product
+# Only accessible to admin users
 @swagger_auto_schema(
     method='DELETE',
-    operation_summary='Delete Product',
-    operation_description='This endpoint will delete an existing product.',
+    operation_summary='Delete Product (Admin Only)',
+    operation_description='This endpoint allows admins to delete an existing product. Regular users do not have access.',
     responses={
         status.HTTP_204_NO_CONTENT: openapi.Response(
             description='Product Deleted',
             examples={'application/json': {'message': 'Product deleted successfully'}}
         ),
+        status.HTTP_403_FORBIDDEN: openapi.Response(
+            description='Not Authorized',
+            examples={'application/json': {'detail': 'You do not have permission to perform this action.'}}
+        ),
         status.HTTP_404_NOT_FOUND: openapi.Response(
             description='Product Not Found',
-            examples={'application/json': {'message': 'Product not found'}}
+            examples={'application/json': {'detail': 'Product not found.'}}
         )
     }
 )
 @api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
 def delete_product(request, product_id):
+    # Check if user is admin
+    if not request.user.is_staff:
+        return Response(
+            {"detail": "You do not have permission to perform this action."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
     # Get the product or return 404 if not found
     product = get_object_or_404(Product, id=product_id)
     

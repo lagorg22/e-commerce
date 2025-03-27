@@ -10,7 +10,23 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'password']
 
     def create(self, validated_data):
+        # Regular users are created with is_staff=False by default
         user = User.objects.create_user(**validated_data)
+        return user
+
+
+class AdminRegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, min_length=6)
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'password']
+
+    def create(self, validated_data):
+        # Create an admin user with is_staff=True
+        user = User.objects.create_user(**validated_data)
+        user.is_staff = True
+        user.save()
         return user
 
 
@@ -20,9 +36,11 @@ class UserLoginSerializer(serializers.Serializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    is_admin = serializers.BooleanField(source='is_staff', read_only=True)
+    
     class Meta:
         model = User
-        fields = ['id', 'username', 'email']
+        fields = ['id', 'username', 'email', 'is_admin']
 
 
 class LogoutSerializer(serializers.Serializer):
