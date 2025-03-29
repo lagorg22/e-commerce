@@ -119,28 +119,6 @@ A robust RESTful API built with Django REST Framework for an e-commerce platform
 - `POST /orders/create/` - Create new order from cart
 - `DELETE /orders/{id}/cancel/` - Cancel order and refund
 
-## Testing
-
-The project includes comprehensive test cases for all components. Tests can be found in the `tests.py` file in each app or in the `tests` directory.
-
-### Running Tests
-
-1. Run all tests:
-   ```bash
-   python manage.py test
-   ```
-
-2. Run tests for a specific app:
-   ```bash
-   python manage.py test users
-   ```
-
-3. Run tests with coverage:
-   ```bash
-   coverage run --source='.' manage.py test
-   coverage report
-   ```
-
 ## Design Considerations
 
 ### Architecture
